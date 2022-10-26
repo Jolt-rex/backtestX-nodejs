@@ -4,6 +4,7 @@
 const { CryptoPair } = require('../models/cryptoPairs');
 const winston = require('winston');
 const { CronJob } = require('cron');
+const { getWebSocket, registerOnClosedCandle } = require('../services/binanceAPI');
 
 const connectedPairs = new Set();
 const connections = [];
@@ -24,7 +25,8 @@ function addSocketConnection() {
     // find the first inactive crypto pair to add
     const { s: pairSymbol } = await CryptoPair.findOne({ a: false }, { s: 1 });
     
-    
+    const ws = getWebSocket([pairSymbol], null);
+    await registerOnClosedCandle(ws, handleCandle);
     
 
     // update to active
@@ -36,5 +38,8 @@ function addSocketConnection() {
   }, 15000);
 }
 
+function handleCandle(candle) {
+  console.log(candle);
+}
 
 
