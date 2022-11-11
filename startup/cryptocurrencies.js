@@ -1,7 +1,7 @@
 const { CronJob } = require('cron');
 const winston = require('winston');
 const { updatePairsFromExchange, setAllPairsInactive } = require('../cryptocurrencies/cryptoPairUpdater');
-const { startSockets } = require('../cryptocurrencies/socketConnectionController');
+const { startSockets } = require('../cryptocurrencies/cryptoPriceUpdater');
 
 function startCryptoPairUpdaterJob() {
   // update trading pairs at 1:16am every day. This time is used

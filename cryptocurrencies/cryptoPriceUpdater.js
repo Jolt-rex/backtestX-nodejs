@@ -4,10 +4,9 @@
 const winston = require('winston');
 const { CronJob } = require('cron');
 const { CryptoPair } = require('../models/cryptoPairs');
-const { getWebSocket, registerOnClosedCandle } = require('../services/binanceAPI');
+const { registerOnClosedCandle } = require('../services/binanceAPI');
 
 const connectedPairs = new Set();
-const connections = [];
 
 module.exports.startSockets = () => {
   // start cron job
@@ -24,12 +23,11 @@ function addSocketConnection() {
   setTimeout(async () => {
     // find the first inactive crypto pair to add
     const { s: pairSymbol } = await CryptoPair.findOne({ a: false }, { s: 1 });
-    
-    const ws = getWebSocket([pairSymbol], null);
-    // FIX circular dependancy
-    await registerOnClosedCandle(ws, handleCandle);
-    
 
+    winston.info(`Adding socket connection with pair ${pairSymbol}`);
+    
+    registerOnClosedCandle(pairSymbol, handleClosedCandle);
+    
     // update to active
     connectedPairs.add(pairSymbol);
 
@@ -39,7 +37,7 @@ function addSocketConnection() {
   }, 15000);
 }
 
-function handleCandle(candle) {
+function handleClosedCandle(candle) {
   console.log(candle);
 }
 
