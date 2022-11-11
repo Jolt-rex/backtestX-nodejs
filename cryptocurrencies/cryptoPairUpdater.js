@@ -1,4 +1,3 @@
-const mongoose = require('mongoose');
 const winston = require('winston');
 const { CryptoPair } = require('../models/cryptoPairs');
 

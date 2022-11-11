@@ -1,9 +1,9 @@
 // controlls logic for connecting to ws on binance
 // accept trading pair string and update one at a time
 // max pairs in each ws is 200
-const { CryptoPair } = require('../models/cryptoPairs');
 const winston = require('winston');
 const { CronJob } = require('cron');
+const { CryptoPair } = require('../models/cryptoPairs');
 const { getWebSocket, registerOnClosedCandle } = require('../services/binanceAPI');
 
 const connectedPairs = new Set();
@@ -26,6 +26,7 @@ function addSocketConnection() {
     const { s: pairSymbol } = await CryptoPair.findOne({ a: false }, { s: 1 });
     
     const ws = getWebSocket([pairSymbol], null);
+    // FIX circular dependancy
     await registerOnClosedCandle(ws, handleCandle);
     
 
