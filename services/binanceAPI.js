@@ -41,6 +41,8 @@ function addWebSocketConnection() {
         connectionUrl: WEB_SOCKET_URL_PREFIX,
         count: 0,
       });
+      
+    winston.info(`Added a new WebSocket connection - total connections ${webSockets.length}`);
     }
 }
 
@@ -49,10 +51,12 @@ function updateLastSocketURL(tradingPair) {
   let url = webSockets[webSockets.length - 1].connectionUrl;
   const parsedPair = `${tradingPair.toLowerCase()}@kline_1m`;
   
-  return url +
-  webSockets[webSockets.length - 1].count > 0
-  ? '/' + parsedPair
-  : parsedPair;
+  webSockets[webSockets.length - 1].connectionUrl = url +
+    webSockets[webSockets.length - 1].count > 0
+    ? '/' + parsedPair
+        : parsedPair;
+  
+  winston.info(`Updated WebSocket at index ${webSockets.length}: new connection url: ${webSockets[webSockets.length - 1].connectionUrl}`);
 }
 
 function registerLastSocket(callback) {
