@@ -6,8 +6,7 @@ const winston = require('winston');
 const MAX_PAIRS_PER_SOCKET = 200;
 const WEB_SOCKET_URL_PREFIX = 'wss://stream.binance.com:9443/stream?streams=';
 const webSockets = [];
-const socketsCount = 0;
-// webSockets is a list of objects as per below
+// webSockets is a list of web socket connections as per below
 // {
 //    connectionUrl: 'wss://stream.binance.com:9443/stream?streams=ethbtc@kline1m/linkusdt@kline1m',
 //    ws: new WebSocket,
@@ -22,53 +21,51 @@ module.exports.binance = new Binance().options({
 
 
 module.exports.registerOnClosedCandle = (tradingPair, callback) => {
+  winston.info(`Adding ${tradingPair} to websockets`);
 
-  const url = WEB_SOCKET_URL_PREFIX + `${tradingPair.toLowerCase()}@kline_1m`;
-
-  winston.info(`Adding url to websocket ${url}`);
-  
-  const ws = new WebSocket(url);
-
-  registerSocket(ws, callback);
+  addWebSocketConnection();
+  updateLastSocketURL(tradingPair);
+  registerLastSocket(callback);
 }
 
-function registerSocket(ws, callback) {
-  ws.on('message', (msg) => {
+
+// takes in trading pair string in form of 'BTCUSDT'
+// adds trading pair to webSockets list of object
+// each webSockets object can have up to MAX_PAIRS_PER_SOCKET pairs
+function addWebSocketConnection() {
+  if (
+    webSockets.length == 0 ||
+    webSockets[webSockets.length - 1].count == MAX_PAIRS_PER_SOCKET
+    ) {
+      webSockets.push({
+        connectionUrl: WEB_SOCKET_URL_PREFIX,
+        count: 0,
+      });
+    }
+}
+
+function updateLastSocketURL(tradingPair) {
+  // add pair to last webSocket connection
+  let url = webSockets[webSockets.length - 1].connectionUrl;
+  const parsedPair = `${tradingPair.toLowerCase()}@kline_1m`;
+  
+  return url +
+  webSockets[webSockets.length - 1].count > 0
+  ? '/' + parsedPair
+  : parsedPair;
+}
+
+function registerLastSocket(callback) {
+  const wsReference = webSockets[webSockets.length - 1];
+  if (wsReference.ws)
+    wsReference.ws.close();
+
+  wsReference.ws = new WebSocket(wsReference.connectionUrl);
+
+  wsReference.ws.on('message', (msg) => {
     const { data } = JSON.parse(msg.toString());
 
     // if this is a closed kline, execute the callback with closed candle data
     if (data.k.x) callback(data.k);
   });
-}
-
-// takes in trading pair string in form of 'BTCUSDT'
-// adds trading pair to webSockets list of object
-// each webSockets object can have up to MAX_PAIRS_PER_SOCKET pairs
-function addWebSocketConnection(tradingPair) {
-  // if webSockets size == 0 or last element.count == 200
-  if (
-    webSockets.length == 0 ||
-    webSockets[webSockets.length - 1].count == MAX_PAIRS_PER_SOCKET
-  ) {
-    webSockets.push({
-      connectionUrl: WEB_SOCKET_URL_PREFIX,
-      count: 0,
-    });
-  }
-  
-  // add pair to last webSocket connection
-  let url = webSockets[webSockets.length - 1].connectionUrl;
-  const parsedPair = `${tradingPair.toLowerCase()}@kline_1m`;
-
-  url +=
-    webSockets[webSockets.length - 1].count > 0
-      ? '/' + parsedPair
-      : parsedPair;
-  
-  reconnectLastSocket();
-}
-
-function reconnectLastSocket() {
-  webSockets[webSockets.length - 1].ws.close();
-
 }
