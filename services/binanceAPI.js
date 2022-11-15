@@ -50,8 +50,6 @@ function updateLastSocketURL(tradingPair) {
   // add pair to last webSocket connection
   const lastSocket = webSockets[webSockets.length - 1];
   const parsedPair = `${tradingPair.toLowerCase()}@kline_1m`;
-
-  winston.info(`Current socket url: ${lastSocket.connectionUrl} - adding pair ${parsedPair}`);
   
   lastSocket.connectionUrl += lastSocket.count > 0 ? '/' + parsedPair : parsedPair;
   lastSocket.count++;
