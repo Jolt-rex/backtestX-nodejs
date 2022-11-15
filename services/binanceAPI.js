@@ -48,15 +48,15 @@ function addWebSocketConnection() {
 
 function updateLastSocketURL(tradingPair) {
   // add pair to last webSocket connection
-  let url = webSockets[webSockets.length - 1].connectionUrl;
+  const lastSocket = webSockets[webSockets.length - 1];
   const parsedPair = `${tradingPair.toLowerCase()}@kline_1m`;
+
+  winston.info(`Current socket url: ${lastSocket.connectionUrl} - adding pair ${parsedPair}`);
   
-  webSockets[webSockets.length - 1].connectionUrl = url +
-    webSockets[webSockets.length - 1].count > 0
-    ? '/' + parsedPair
-        : parsedPair;
+  lastSocket.connectionUrl += lastSocket.count > 0 ? '/' + parsedPair : parsedPair;
+  lastSocket.count++;
   
-  winston.info(`Updated WebSocket at index ${webSockets.length}: new connection url: ${webSockets[webSockets.length - 1].connectionUrl}`);
+  winston.info(`Updated WebSocket at index ${webSockets.length - 1}: count: ${lastSocket.count} new connection url: ${lastSocket.connectionUrl}`);
 }
 
 function registerLastSocket(callback) {
