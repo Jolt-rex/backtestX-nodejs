@@ -3,7 +3,7 @@ const Binance = require('node-binance-api');
 const config = require('config');
 const winston = require('winston');
 
-const MAX_PAIRS_PER_SOCKET = 200;
+const MAX_PAIRS_PER_SOCKET = 2;
 const WEB_SOCKET_URL_PREFIX = 'wss://stream.binance.com:9443/stream?streams=';
 const webSockets = [];
 // webSockets is a list of web socket connections as per below
@@ -26,6 +26,9 @@ module.exports.registerOnClosedCandle = (tradingPair, callback) => {
   addWebSocketConnection();
   updateLastSocketURL(tradingPair);
   registerLastSocket(callback);
+  
+  console.log('\nAll sockets');
+  webSockets.forEach(s => console.log(s.connectionUrl));
 }
 
 
@@ -43,7 +46,8 @@ function addWebSocketConnection() {
       });
       
     winston.info(`Added a new WebSocket connection - total connections ${webSockets.length}`);
-    }
+  }
+  
 }
 
 function updateLastSocketURL(tradingPair) {

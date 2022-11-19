@@ -30,8 +30,27 @@ function addSocketConnection() {
   }, 15000);
 }
 
-function handleClosedCandle(candle) {
-  console.log(candle);
+function handleClosedCandle({ t, T, s, o, c, h, l, v }) {
+  console.log(`${s} ${t} ${c} `);
 }
 
 
+// {
+//   t: 1668837600000,
+//   T: 1668837659999,
+//   s: 'LTCBTC',
+//   i: '1m',
+//   f: 85643015,
+//   L: 85643017,
+//   o: '0.00374300',
+//   c: '0.00374500',
+//   h: '0.00374500',
+//   l: '0.00374300',
+//   v: '6.43200000',
+//   n: 3,
+//   x: true,
+//   q: '0.02408159',
+//   V: '6.27300000',
+//   Q: '0.02348646',
+//   B: '0'
+// }
