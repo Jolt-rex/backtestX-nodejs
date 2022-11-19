@@ -30,8 +30,15 @@ function addSocketConnection() {
   }, 15000);
 }
 
-function handleClosedCandle({ t, T, s, o, c, h, l, v }) {
+// called once for every 1min close candle
+async function handleClosedCandle({ t, T, s, o, c, h, l, v }) {
   console.log(`${s} ${t} ${c} `);
+
+  const timeFrame = '1m';
+  const pusher = { $push: {} };
+  pusher.$push["pd." + timeFrame] = { t, o, c, h, l, v };
+  
+  await CryptoPair.findOneAndUpdate({ s }, pusher );
 }
 
 
