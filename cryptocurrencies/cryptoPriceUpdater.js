@@ -6,6 +6,10 @@ const { CronJob } = require('cron');
 const { CryptoPair } = require('../models/cryptoPairs');
 const { registerOnClosedCandle } = require('../services/binanceAPI');
 
+// should be more performant than using objects to store both values together
+const TIMELINE_VALUES = [ '5m', '15m' ];
+const TIMELINE_DIVISORS = [ 300_000, 900_000 ];
+
 module.exports.startSockets = () => {
   // start cron job
   const socketConnectionControllerJob = new CronJob('* * * * *', addSocketConnection);
@@ -34,11 +38,31 @@ function addSocketConnection() {
 async function handleClosedCandle({ t, T, s, o, c, h, l, v }) {
   console.log(`${s} ${t} ${c} `);
 
-  const timeFrame = '1m';
-  const pusher = { $push: {} };
-  pusher.$push["pd." + timeFrame] = { t, o, c, h, l, v };
+  const data = { t, T, o, c, h, l, v };
+
+  let pusher = { $push: {} };
+  pusher.$push["pd.1m"] = data;  
   
-  await CryptoPair.findOneAndUpdate({ s }, pusher );
+  pusher = updateNextTimeFrame(0, s, data, pusher);
+
+  console.log(pusher);
+
+  await CryptoPair.findOneAndUpdate({ s }, pusher);
+}
+
+function updateNextTimeFrame(index, s, data, pusher) {
+  // if we are past the last timeFrame index, or not in a valid timeFrame block then return
+  // this will prevent unnecessary calls for larger timeFrames
+  // eg: a candle that does not close on a 5min timeFrame will not check if it closes on 15min or subsequent timelines
+
+  console.log(`------ ${TIMELINE_DIVISORS.length} vs ${index} -- ${data.t} % ${TIMELINE_DIVISORS[index]} = ${(data.t % TIMELINE_DIVISORS[index])}`);
+
+  if (TIMELINE_DIVISORS.length == index || (data.t % TIMELINE_DIVISORS[index]) !== 0) return pusher;
+
+  console.log(`Adding to pusher ${TIMELINE_VALUES[index]}`);
+  pusher.$push["pd." + TIMELINE_VALUES[index]] = data;
+
+  return updateNextTimeFrame(index + 1, s, data, pusher);
 }
 
 
