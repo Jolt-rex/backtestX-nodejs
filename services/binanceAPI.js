@@ -3,7 +3,7 @@ const Binance = require('node-binance-api');
 const config = require('config');
 const winston = require('winston');
 
-const MAX_PAIRS_PER_SOCKET = 2;
+const MAX_PAIRS_PER_SOCKET = 200;
 const WEB_SOCKET_URL_PREFIX = 'wss://stream.binance.com:9443/stream?streams=';
 const webSockets = [];
 // webSockets is a list of web socket connections as per below
@@ -21,13 +21,12 @@ module.exports.binance = new Binance().options({
 
 
 module.exports.registerOnClosedCandle = (tradingPair, callback) => {
-  winston.info(`Adding ${tradingPair} to websockets`);
+  // winston.info(`Adding ${tradingPair} to websockets`);
 
   addWebSocketConnection();
   updateLastSocketURL(tradingPair);
   registerLastSocket(callback);
   
-  console.log('\nAll sockets');
   webSockets.forEach(s => console.log(s.connectionUrl));
 }
 
@@ -45,7 +44,7 @@ function addWebSocketConnection() {
         count: 0,
       });
       
-    winston.info(`Added a new WebSocket connection - total connections ${webSockets.length}`);
+    // winston.info(`Added a new WebSocket connection - total connections ${webSockets.length}`);
   }
   
 }
@@ -58,7 +57,7 @@ function updateLastSocketURL(tradingPair) {
   lastSocket.connectionUrl += lastSocket.count > 0 ? '/' + parsedPair : parsedPair;
   lastSocket.count++;
   
-  winston.info(`Updated WebSocket at index ${webSockets.length - 1}: count: ${lastSocket.count} new connection url: ${lastSocket.connectionUrl}`);
+  // winston.info(`Updated WebSocket at index ${webSockets.length - 1}: count: ${lastSocket.count} new connection url: ${lastSocket.connectionUrl}`);
 }
 
 function registerLastSocket(callback) {

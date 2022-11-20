@@ -29,11 +29,12 @@ function addSocketConnection() {
   // wait 15 seconds into this minute to prevent overloading db and API
   setTimeout(async () => {
     // find the first inactive crypto pair to add
-    const { s: pairSymbol } = await CryptoPair.findOne({ a: false }, { s: 1 });
+    const { s } = await CryptoPair.findOne({ a: false }, { s: 1 });
     
-    registerOnClosedCandle(pairSymbol, handleClosedCandle);
+    registerOnClosedCandle(s, handleClosedCandle);
 
-    await CryptoPair.findOneAndUpdate({ s: pairSymbol }, { $set: { a: true } });
+    tempValues[s] = {};
+    await CryptoPair.findOneAndUpdate({ s }, { $set: { a: true } });
 
     winston.info(`Adding new cryptocurrency pair to websocket: ${pairSymbol}`);
   }, 15000);
@@ -46,6 +47,7 @@ async function handleClosedCandle({ t, T, s, o, c, h, l, v }) {
   let pusher = { $push: {} };
   pusher.$push["pd.1m"] = data;  
   
+  updateTempValuesEveryMinute(s, data);
   pusher = updateNextTimeFrame(0, s, data, pusher, T + 1);
 
   await CryptoPair.findOneAndUpdate({ s }, pusher);
@@ -55,11 +57,36 @@ async function handleClosedCandle({ t, T, s, o, c, h, l, v }) {
 // this will prevent unnecessary calls for larger timeFrames
 // eg: a candle that does not close on a 5min timeFrame will not check if it closes on 15min or subsequent timelines
 function updateNextTimeFrame(index, s, data, pusher, T) {
-  if (TIMELINE_DIVISORS.length == index || (T % TIMELINE_DIVISORS[index]) !== 0) return pusher;
+  const timeFrame = TIMELINE_VALUES[index];
+  const timeDivisor = TIMELINE_DIVISORS[index];
+  // only push data if we have a completed candle ie we have not started part way into the timeFrame
+  // find this by subtracting timeFrame divisor from T time should give us data.t time
+  if (TIMELINE_DIVISORS.length == index || (T % timeDivisor) !== 0 || (T - timeDivisor) !== data.t)
+    return pusher;
 
-  pusher.$push["pd." + TIMELINE_VALUES[index]] = data;
+  pusher.$push["pd." + timeFrame] = tempValues[s][timeFrame];
+  tempValues[s][timeFrame] = null;
 
   return updateNextTimeFrame(index + 1, s, data, pusher, T);
+}
+
+// update all timeFrame values for this symbol for every 1 minute closed candle
+function updateTempValuesEveryMinute(s, data) {
+  TIMELINE_VALUES.forEach(timeFrame => {
+    // TODO check this will work for cleaner code
+    // const current = tempValues[s][timeFrame];
+
+    // if the timeFrame has been reset, then add all the data
+    if (!tempValues[s][timeFrame]) {
+      tempValues[s][timeFrame] = data;
+    }
+    // else update the data combining previous candle values
+    else {
+      tempValues[s][timeFrame].h = Math.max(tempValues[s][timeFrame].h, data.h);
+      tempValues[s][timeFrame].l = Math.min(tempValues[s][timeFrame].l, data.l);
+      tempValues[s][timeFrame].v = tempValues[s][timeFrame].v += data.v;
+    }
+  })
 }
 
 
