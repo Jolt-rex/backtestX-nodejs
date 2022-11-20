@@ -27,7 +27,7 @@ module.exports.registerOnClosedCandle = (tradingPair, callback) => {
   updateLastSocketURL(tradingPair);
   registerLastSocket(callback);
   
-  webSockets.forEach(s => console.log(s.connectionUrl));
+  // webSockets.forEach(s => console.log(s.connectionUrl));
 }
 
 

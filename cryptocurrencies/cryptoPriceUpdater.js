@@ -8,7 +8,7 @@ const { registerOnClosedCandle } = require('../services/binanceAPI');
 
 // should be more performant than using objects to store both values together
 const TIMELINE_VALUES = [ '5m', '15m', '30m', '1h', '2h', '4h', '12h', '1d', '1w' ];
-const TIMELINE_DIVISORS = [300_000, 900_000, 1_800_000, 3_600_000, 7_200_000, 14_400_000, 43_200_000, 86_400_000, 604_800_000 ];
+const TIMELINE_DIVISORS = [ 300_000, 900_000, 1_800_000, 3_600_000, 7_200_000, 14_400_000, 43_200_000, 86_400_000, 604_800_000 ];
 
 // TODO - keep temp values until we get a close candle of that value
 // then push to db and reset values
@@ -36,19 +36,22 @@ function addSocketConnection() {
     tempValues[s] = {};
     await CryptoPair.findOneAndUpdate({ s }, { $set: { a: true } });
 
-    winston.info(`Adding new cryptocurrency pair to websocket: ${pairSymbol}`);
+    winston.info(`Adding new cryptocurrency pair to websocket: ${ s }`);
   }, 15000);
 }
 
 // called once for every 1min close candle
 async function handleClosedCandle({ t, T, s, o, c, h, l, v }) {
-  const data = { t, o, c, h, l, v };
+  const data = { t, o: parseFloat(o), c: parseFloat(c), h: parseFloat(h), l: parseFloat(l), v: parseFloat(v) };
 
   let pusher = { $push: {} };
   pusher.$push["pd.1m"] = data;  
   
   updateTempValuesEveryMinute(s, data);
   pusher = updateNextTimeFrame(0, s, data, pusher, T + 1);
+
+  console.log(pusher);
+
 
   await CryptoPair.findOneAndUpdate({ s }, pusher);
 }
@@ -60,8 +63,11 @@ function updateNextTimeFrame(index, s, data, pusher, T) {
   const timeFrame = TIMELINE_VALUES[index];
   const timeDivisor = TIMELINE_DIVISORS[index];
   // only push data if we have a completed candle ie we have not started part way into the timeFrame
-  // find this by subtracting timeFrame divisor from T time should give us data.t time
-  if (TIMELINE_DIVISORS.length == index || (T % timeDivisor) !== 0 || (T - timeDivisor) !== data.t)
+  // find this by subtracting timeFrame divisor from T time should give us the temp.t time
+  console.log(
+    `T: ${T} timeDivisor: ${timeDivisor} tempValues.t: ${tempValues[s][timeFrame].t}`
+  );
+  if (TIMELINE_DIVISORS.length == index || (T % timeDivisor) !== 0 || (T - timeDivisor) !== tempValues[s][timeFrame].t)
     return pusher;
 
   pusher.$push["pd." + timeFrame] = tempValues[s][timeFrame];
@@ -72,21 +78,34 @@ function updateNextTimeFrame(index, s, data, pusher, T) {
 
 // update all timeFrame values for this symbol for every 1 minute closed candle
 function updateTempValuesEveryMinute(s, data) {
+  console.log(`Updating values for symbol ${s} @ ${data.t}`);
+
   TIMELINE_VALUES.forEach(timeFrame => {
     // TODO check this will work for cleaner code
     // const current = tempValues[s][timeFrame];
 
     // if the timeFrame has been reset, then add all the data
     if (!tempValues[s][timeFrame]) {
+      console.log(`Adding all data for ${s} timeFrame ${timeFrame}`);
       tempValues[s][timeFrame] = data;
     }
     // else update the data combining previous candle values
     else {
+      console.log(`Updating data for ${s} timeFrame ${timeFrame}`);
       tempValues[s][timeFrame].h = Math.max(tempValues[s][timeFrame].h, data.h);
       tempValues[s][timeFrame].l = Math.min(tempValues[s][timeFrame].l, data.l);
       tempValues[s][timeFrame].v = tempValues[s][timeFrame].v += data.v;
     }
-  })
+    
+    // if (timeFrame === '5m') {
+    //   console.log('TEMP VALUES');
+    //   console.log(`${s}: ${tempValues[s][timeFrame].t}`);
+    //   console.log(`${s}: ${tempValues[s][timeFrame].o}`);
+    //   console.log(`${s}: ${tempValues[s][timeFrame].h}`);
+    //   console.log(`${s}: ${tempValues[s][timeFrame].l}`);
+    //   console.log(`${s}: ${tempValues[s][timeFrame].v}`);
+    // }
+  });
 }
 
 
