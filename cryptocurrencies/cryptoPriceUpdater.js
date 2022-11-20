@@ -41,8 +41,8 @@ function addSocketConnection() {
 }
 
 // called once for every 1min close candle
-async function handleClosedCandle({ t, T, s, o, c, h, l, v }) {
-  const data = { t, o: parseFloat(o), c: parseFloat(c), h: parseFloat(h), l: parseFloat(l), v: parseFloat(v) };
+async function handleClosedCandle({ t, T, s, o, c, h, l, v, q }) {
+  const data = { t, o: parseFloat(o), c: parseFloat(c), h: parseFloat(h), l: parseFloat(l), v: parseFloat(v), q: parseFloat(q) };
   
   let pusher = { $push: {} };
   pusher.$push["pd.1m"] = data;  
@@ -90,7 +90,9 @@ function updateTempValuesEveryMinute(s, data) {
     else {
       tempValues[s][timeFrame].h = Math.max(tempValues[s][timeFrame].h, data.h);
       tempValues[s][timeFrame].l = Math.min(tempValues[s][timeFrame].l, data.l);
+      tempValues[s][timeFrame].c = tempValues[s][timeFrame].c;
       tempValues[s][timeFrame].v = tempValues[s][timeFrame].v += data.v;
+      tempValues[s][timeFrame].q = tempValues[s][timeFrame].q += data.q;
     }
   });
 }
