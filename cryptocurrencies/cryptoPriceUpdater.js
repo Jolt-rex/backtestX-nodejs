@@ -29,15 +29,15 @@ function addSocketConnection() {
   // wait 15 seconds into this minute to prevent overloading db and API
   setTimeout(async () => {
     // find the first inactive crypto pair to add
-    const { s } = await CryptoPair.findOne({ a: false }, { s: 1 });
+    const { _id, s } = await CryptoPair.findOne({ a: false }, { _id: 1, s: 1 });
     
     registerOnClosedCandle(s, handleClosedCandle);
 
     tempValues[s] = {};
-    await CryptoPair.findOneAndUpdate({ s }, { $set: { a: true } });
+    await CryptoPair.findByIdAndUpdate( _id, { $set: { a: true } });
     
     winston.info(`Adding new cryptocurrency pair to websocket: ${ s }`);
-  }, 15000);
+  }, 10000);
 }
 
 // called once for every 1min close candle
@@ -80,9 +80,6 @@ function updateNextTimeFrame(index, s, data, pusher, T) {
 // update all timeFrame values for this symbol for every 1 minute closed candle
 function updateTempValuesEveryMinute(s, data) {
   TIMELINE_VALUES.forEach(timeFrame => {
-    // TODO check this will work for cleaner code
-    // const current = tempValues[s][timeFrame];
-
     // if the timeFrame has been reset, then add all the data
     if (!tempValues[s][timeFrame])
       tempValues[s][timeFrame] = data;
