@@ -4,7 +4,7 @@
 const winston = require('winston');
 const { CronJob, time } = require('cron');
 const { CryptoPair } = require('../models/cryptoPairs');
-const { registerOnClosedCandle } = require('../services/binanceAPI');
+const { registerOnClosedCandle, binance } = require('../services/binanceAPI');
 
 // should be more performant than using objects to store both values together
 const TIMELINE_VALUES = [ '5m', '15m', '30m', '1h', '2h', '4h', '12h', '1d', '1w' ];
@@ -23,20 +23,22 @@ module.exports.startSockets = () => {
 }
 
 // take next inactive pair from db and initiate socket connect
-// set trading pair to active
-// TODO: download historical data before initialising socket
+// && set trading pair to active
 function addSocketConnection() {
-  // wait 15 seconds into this minute to prevent overloading db and API
+  // wait 10 seconds into this minute to prevent overloading db and API
   setTimeout(async () => {
     // find the first inactive crypto pair to add
     const { _id, s } = await CryptoPair.findOne({ a: false }, { _id: 1, s: 1 });
     
+    tempValues[s] = {};
+
     registerOnClosedCandle(s, handleClosedCandle);
 
-    tempValues[s] = {};
+    await loadHistoricalData(_id, s);
+
     await CryptoPair.findByIdAndUpdate( _id, { $set: { a: true } });
     
-    winston.info(`Adding new cryptocurrency pair to websocket: ${ s }`);
+    winston.info(`Activated new cryptocurrency pair ${ s }`);
   }, 10000);
 }
 
@@ -49,8 +51,6 @@ async function handleClosedCandle({ t, T, s, o, c, h, l, v, q }) {
   
   updateTempValuesEveryMinute(s, data);
   pusher = updateNextTimeFrame(0, s, data, pusher, T + 1);
-
-  console.log(pusher);
 
   await CryptoPair.findOneAndUpdate({ s }, pusher);
 }
@@ -94,23 +94,60 @@ function updateTempValuesEveryMinute(s, data) {
   });
 }
 
+// takes _id of db cryptoPair and symbol to load historical candle data from
+// binance API and push to db
+// TODO : load previous candles - if > 0 : find open time of last candle, and load from that last candle only
+// TODO : Load longer history of candles - may need multiple API calls 
+// TODO : re-factor this function
+async function loadHistoricalData(_id, s) {
+  TIMELINE_VALUES.forEach(timeFrame => {
+    winston.info(`Loading historical data for ${s} with ${timeFrame} time frame`);
+
+    binance.candlesticks(s, timeFrame, async (error, ticks) => {
+      if (error) {
+        winston.error(`Error loading historical data for ${s} for ${timeFrame} - ${error}`);
+        return;
+      }
+
+      
+      const data = ticks.map(timeData => {
+        const [t, o, h, l, c, v, T, q] = timeData;
+        return { t, o: parseFloat(o), c: parseFloat(c), h: parseFloat(h), l: parseFloat(l), v: parseFloat(v), q: parseFloat(q) };
+      });
+      
+      winston.info(`Loaded ${data.length} candles for ${s}`);
+
+      let pusher = { $set: {} };
+      pusher.$set[`pd.${timeFrame}`] = data;
+      
+      await CryptoPair.findByIdAndUpdate(_id, pusher);
+
+    }, { limit: 1000 });
+  });
+}
+
 
 // {
-//   t: 1668837600000,
-//   T: 1668837659999,
-//   s: 'LTCBTC',
-//   i: '1m',
-//   f: 85643015,
-//   L: 85643017,
-//   o: '0.00374300',
-//   c: '0.00374500',
-//   h: '0.00374500',
-//   l: '0.00374300',
-//   v: '6.43200000',
-//   n: 3,
-//   x: true,
-//   q: '0.02408159',
-//   V: '6.27300000',
-//   Q: '0.02348646',
-//   B: '0'
+//   "e": "kline",     // Event type
+//   "E": 123456789,   // Event time
+//   "s": "BNBBTC",    // Symbol
+//   "k": {
+//     "t": 123400000, // Kline start time
+//     "T": 123460000, // Kline close time
+//     "s": "BNBBTC",  // Symbol
+//     "i": "1m",      // Interval
+//     "f": 100,       // First trade ID
+//     "L": 200,       // Last trade ID
+//     "o": "0.0010",  // Open price
+//     "c": "0.0020",  // Close price
+//     "h": "0.0025",  // High price
+//     "l": "0.0015",  // Low price
+//     "v": "1000",    // Base asset volume
+//     "n": 100,       // Number of trades
+//     "x": false,     // Is this kline closed?
+//     "q": "1.0000",  // Quote asset volume
+//     "V": "500",     // Taker buy base asset volume
+//     "Q": "0.500",   // Taker buy quote asset volume
+//     "B": "123456"   // Ignore
+//   }
 // }
