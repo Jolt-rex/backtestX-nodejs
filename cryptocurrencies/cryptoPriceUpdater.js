@@ -4,7 +4,7 @@
 const winston = require('winston');
 const { CronJob, time } = require('cron');
 const { CryptoPair } = require('../models/cryptoPairs');
-const { registerOnClosedCandle, binance } = require('../services/binanceAPI');
+const { registerOnClosedCandle, getCandles, binance } = require('../services/binanceAPI');
 
 // should be more performant than using objects to store both values together
 const TIMELINE_VALUES = [ '1m', '5m', '15m', '30m', '1h', '2h', '4h', '12h', '1d', '1w' ];
@@ -108,25 +108,17 @@ async function loadHistoricalData(_id, s) {
       return;
     }
 
-    binance.candlesticks(s, timeFrame, async (error, ticks) => {
-      if (error) {
-        winston.error(`Error loading historical data for ${s} for ${timeFrame} - ${error}`);
-        return;
-      }
-
-      const data = parseCandleData(ticks);
+    const candles = await getCandles(s, timeFrame);
       
-      winston.info(`Loaded ${data.length} candles for ${s} ${timeFrame}`);
-      
-      let pusher = { $set: {} };
-      pusher.$set[`pd.${timeFrame}`] = data;
-      await CryptoPair.findByIdAndUpdate(_id, pusher);
-      
-    }, { limit: MAX_REQUEST_LIMIT });
+    winston.info(`Loaded ${candles.length} candles for ${s} ${timeFrame}`);
+    
+    let pusher = { $set: {} };
+    pusher.$set[`pd.${timeFrame}`] = candles;
+    await CryptoPair.findByIdAndUpdate(_id, pusher);
   });
 }
 
-// returns true if we need to load in historical data from empty
+// returns true if historical data is current
 async function isHistoricalDataCurrent(_id, s, timeFrame, i) {
   // get from db last candle for timeframe and symbol
   const projection = { candle: { $last: `$pd.${timeFrame}`} };
@@ -135,7 +127,7 @@ async function isHistoricalDataCurrent(_id, s, timeFrame, i) {
   console.log(`Last candle for ${s} ${timeFrame} is ${mostRecentCandle}`);
   
   // if no previous candles - return
-  if (!mostRecentCandle.projection || !mostRecentCandle.projection.candle) {
+  if (!mostRecentCandle.projection && !mostRecentCandle.projection.candle) {
     winston.info(`No previous data for ${s} at ${timeFrame}`); 
     return false;
   }
@@ -143,29 +135,16 @@ async function isHistoricalDataCurrent(_id, s, timeFrame, i) {
   // if timeframe is further in past than current timeFrame, load missing data
   if ((mostRecentCandle.projection.candle.t  + TIMELINE_DIVISORS[i]) < Date.now()) {
     winston.info(`Candles are lagging behind current timeframe, updating for ${s} for ${timeFrame}`);
-    binance.candlesticks(s, timeFrame, async (error, ticks) => {
-      if (error) {
-        winston.error(`Error attempting to load historical data for ${s} ${timeFrame}`);
-        return false;
-      }
-      
-      const candles = parseCandleData(ticks);
-      
-      const pusher = { $push: {} };
-      pusher.$push[`pd.${TIMELINE_VALUES[i]}`] = candles;
-      await CryptoPair.findByIdAndUpdate(_id, pusher);
 
-    }, { startTime: mostRecentCandle.projection.candle.t + TIMELINE_DIVISORS[i] })    
+    const startTime = mostRecentCandle.projection.candle.t + TIMELINE_DIVISORS[i];
+    const candles = await getCandles(s, timeFrame, startTime, Date.now());
+      
+    const pusher = { $push: {} };
+    pusher.$push[`pd.${TIMELINE_VALUES[i]}`] = candles;
+    await CryptoPair.findByIdAndUpdate(_id, pusher);
   }
 
   return true;
-}
-
-function parseCandleData(candles) {
-  return candles.map(timeData => {
-    const [t, o, h, l, c, v, T, q] = timeData;
-    return { t, o: parseFloat(o), c: parseFloat(c), h: parseFloat(h), l: parseFloat(l), v: parseFloat(v), q: parseFloat(q) };
-  });
 }
 
 

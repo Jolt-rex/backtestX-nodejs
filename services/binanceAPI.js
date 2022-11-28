@@ -1,7 +1,9 @@
 const WebSocket = require('ws');
+const axios = require('axios');
 const Binance = require('node-binance-api');
-const config = require('config');
 const winston = require('winston');
+
+const klineEndpoint = 'https://api.binance.com/api/v3/klines';
 
 const MAX_PAIRS_PER_SOCKET = 200;
 const WEB_SOCKET_URL_PREFIX = 'wss://stream.binance.com:9443/stream?streams=';
@@ -13,12 +15,40 @@ const webSockets = [];
 //    count: 0    
 // }
 
+module.exports.binance = new Binance();
 
-module.exports.binance = new Binance().options({
-  APIKEY: config.util.getEnv('BinanceAPIKEY'),
-  APISECRET: config.util.getEnv('BinanceAPISECRET'),
-});
+module.exports.getCandles = async (s, timeFrame, startTime = null, endTime = null) => {
+  try {
+    let url = `${klineEndpoint}?symbol=${s}&interval=${timeFrame}&limit=${API_KLINE_LIMIT}`;
+    url +=
+      startTime && endTime
+        ? `&startTime=${startTime.toString()}&endTime=${endTime}`
+        : '';
 
+    const { data } = await axios.get(url);
+
+    if (!data) return;
+
+    return parseCandles(data);
+  } catch (ex) {
+    winston.error(ex);
+  }
+}
+
+function parseCandles(candles) {
+  return candles.map((candle) => {
+    const [t, o, h, l, c, v, T, q] = candle;
+    return {
+      t,
+      o: parseFloat(o),
+      c: parseFloat(c),
+      h: parseFloat(h),
+      l: parseFloat(l),
+      v: parseFloat(v),
+      q: parseFloat(q),
+    };
+  });
+}
 
 module.exports.registerOnClosedCandle = (tradingPair, callback) => {
   // winston.info(`Adding ${tradingPair} to websockets`);
@@ -46,7 +76,6 @@ function addWebSocketConnection() {
       
     // winston.info(`Added a new WebSocket connection - total connections ${webSockets.length}`);
   }
-  
 }
 
 function updateLastSocketURL(tradingPair) {
