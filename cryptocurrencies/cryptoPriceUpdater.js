@@ -7,8 +7,9 @@ const { CryptoPair } = require('../models/cryptoPairs');
 const { registerOnClosedCandle, binance } = require('../services/binanceAPI');
 
 // should be more performant than using objects to store both values together
-const TIMELINE_VALUES = [ '5m', '15m', '30m', '1h', '2h', '4h', '12h', '1d', '1w' ];
-const TIMELINE_DIVISORS = [ 300_000, 900_000, 1_800_000, 3_600_000, 7_200_000, 14_400_000, 43_200_000, 86_400_000, 604_800_000 ];
+const TIMELINE_VALUES = [ '1m', '5m', '15m', '30m', '1h', '2h', '4h', '12h', '1d', '1w' ];
+const TIMELINE_DIVISORS = [60_000, 300_000, 900_000, 1_800_000, 3_600_000, 7_200_000, 14_400_000, 43_200_000, 86_400_000, 604_800_000];
+const MAX_REQUEST_LIMIT = 10;
 
 // TODO - keep temp values until we get a close candle of that value
 // then push to db and reset values
@@ -50,7 +51,7 @@ async function handleClosedCandle({ t, T, s, o, c, h, l, v, q }) {
   pusher.$push["pd.1m"] = data;  
   
   updateTempValuesEveryMinute(s, data);
-  pusher = updateNextTimeFrame(0, s, data, pusher, T + 1);
+  pusher = updateNextTimeFrame(1, s, data, pusher, T + 1);
 
   await CryptoPair.findOneAndUpdate({ s }, pusher);
 }
@@ -96,12 +97,16 @@ function updateTempValuesEveryMinute(s, data) {
 
 // takes _id of db cryptoPair and symbol to load historical candle data from
 // binance API and push to db
-// TODO : load previous candles - if > 0 : find open time of last candle, and load from that last candle only
 // TODO : Load longer history of candles - may need multiple API calls 
 // TODO : re-factor this function
 async function loadHistoricalData(_id, s) {
-  TIMELINE_VALUES.forEach(timeFrame => {
+  TIMELINE_VALUES.forEach(async (timeFrame, i) => {
     winston.info(`Loading historical data for ${s} with ${timeFrame} time frame`);
+
+    if (await isHistoricalDataCurrent(_id, s, timeFrame, i)) {
+      winston.info(`Data has alreay been loaded, update not required for ${s} at ${timeFrame}`);
+      return;
+    }
 
     binance.candlesticks(s, timeFrame, async (error, ticks) => {
       if (error) {
@@ -109,35 +114,58 @@ async function loadHistoricalData(_id, s) {
         return;
       }
 
-      updateHistoricalIfRequired(_id, timeFrame);
-
+      const data = parseCandleData(ticks);
       
-      const data = ticks.map(timeData => {
-        const [t, o, h, l, c, v, T, q] = timeData;
-        return { t, o: parseFloat(o), c: parseFloat(c), h: parseFloat(h), l: parseFloat(l), v: parseFloat(v), q: parseFloat(q) };
-      });
+      winston.info(`Loaded ${data.length} candles for ${s} ${timeFrame}`);
       
-      winston.info(`Loaded ${data.length} candles for ${s}`);
-
       let pusher = { $set: {} };
       pusher.$set[`pd.${timeFrame}`] = data;
-      
       await CryptoPair.findByIdAndUpdate(_id, pusher);
-
-    }, { limit: 1000 });
+      
+    }, { limit: MAX_REQUEST_LIMIT });
   });
 }
 
-async function updateHistoricalIfRequired(_id, timeFrame) {
+// returns true if we need to load in historical data from empty
+async function isHistoricalDataCurrent(_id, s, timeFrame, i) {
   // get from db last candle for timeframe and symbol
   const projection = { candle: { $last: `$pd.${timeFrame}`} };
-
   const mostRecentCandle = await CryptoPair.findById(_id, { projection });
+  
+  console.log(`Last candle for ${s} ${timeFrame} is ${mostRecentCandle}`);
+  
+  // if no previous candles - return
+  if (!mostRecentCandle.projection || !mostRecentCandle.projection.candle) {
+    winston.info(`No previous data for ${s} at ${timeFrame}`); 
+    return false;
+  }
+  
+  // if timeframe is further in past than current timeFrame, load missing data
+  if ((mostRecentCandle.projection.candle.t  + TIMELINE_DIVISORS[i]) < Date.now()) {
+    winston.info(`Candles are lagging behind current timeframe, updating for ${s} for ${timeFrame}`);
+    binance.candlesticks(s, timeFrame, async (error, ticks) => {
+      if (error) {
+        winston.error(`Error attempting to load historical data for ${s} ${timeFrame}`);
+        return false;
+      }
+      
+      const candles = parseCandleData(ticks);
+      
+      const pusher = { $push: {} };
+      pusher.$push[`pd.${TIMELINE_VALUES[i]}`] = candles;
+      await CryptoPair.findByIdAndUpdate(_id, pusher);
 
-  console.log(`Last candle for ${timeFrame} is ${mostRecentCandle}`);
+    }, { startTime: mostRecentCandle.projection.candle.t + TIMELINE_DIVISORS[i] })    
+  }
 
-  // if timeframe is further in past than timeFrame
-  // load historical data from last candle and update db
+  return true;
+}
+
+function parseCandleData(candles) {
+  return candles.map(timeData => {
+    const [t, o, h, l, c, v, T, q] = timeData;
+    return { t, o: parseFloat(o), c: parseFloat(c), h: parseFloat(h), l: parseFloat(l), v: parseFloat(v), q: parseFloat(q) };
+  });
 }
 
 
