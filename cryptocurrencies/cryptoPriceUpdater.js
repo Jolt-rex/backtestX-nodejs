@@ -109,6 +109,8 @@ async function loadHistoricalData(_id, s) {
         return;
       }
 
+      updateHistoricalIfRequired(_id, timeFrame);
+
       
       const data = ticks.map(timeData => {
         const [t, o, h, l, c, v, T, q] = timeData;
@@ -124,6 +126,18 @@ async function loadHistoricalData(_id, s) {
 
     }, { limit: 1000 });
   });
+}
+
+async function updateHistoricalIfRequired(_id, timeFrame) {
+  // get from db last candle for timeframe and symbol
+  const projection = { candle: { $last: `$pd.${timeFrame}`} };
+
+  const mostRecentCandle = await CryptoPair.findById(_id, { projection });
+
+  console.log(`Last candle for ${timeFrame} is ${mostRecentCandle}`);
+
+  // if timeframe is further in past than timeFrame
+  // load historical data from last candle and update db
 }
 
 
