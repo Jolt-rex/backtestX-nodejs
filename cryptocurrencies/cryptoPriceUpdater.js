@@ -121,19 +121,22 @@ async function loadHistoricalData(_id, s) {
 // returns true if historical data is current
 async function isHistoricalDataCurrent(_id, s, timeFrame, i) {
   // get from db last candle for timeframe and symbol
-  const projection = { candle: { $last: `$pd.${timeFrame}`} };
-  const mostRecentCandle = await CryptoPair.findById(_id, { projection });
-  
-  console.log(`Last candle for ${s} ${timeFrame} is ${mostRecentCandle}`);
+  const projection = {};
+  projection[`pd.${timeFrame}`] = 1;
+  console.log(projection);
+  let candles = await CryptoPair.findById(_id, { projection });
+  //const mostRecentCandle = candles.slice(-1);
+
+  console.log(`Last candle for ${s} ${timeFrame} is ${candles}`);
   
   // if no previous candles - return
-  if (!mostRecentCandle.projection && !mostRecentCandle.projection.candle) {
+  if (!mostRecentCandle) {
     winston.info(`No previous data for ${s} at ${timeFrame}`); 
     return false;
   }
   
   // if timeframe is further in past than current timeFrame, load missing data
-  if ((mostRecentCandle.projection.candle.t  + TIMELINE_DIVISORS[i]) < Date.now()) {
+  if ((mostRecentCandle.projection.pd[timeFrame].t  + TIMELINE_DIVISORS[i]) < Date.now()) {
     winston.info(`Candles are lagging behind current timeframe, updating for ${s} for ${timeFrame}`);
 
     const startTime = mostRecentCandle.projection.candle.t + TIMELINE_DIVISORS[i];
