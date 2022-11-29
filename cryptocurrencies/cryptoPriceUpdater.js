@@ -97,8 +97,6 @@ function updateTempValuesEveryMinute(s, data) {
 
 // takes _id of db cryptoPair and symbol to load historical candle data from
 // binance API and push to db
-// TODO : Load longer history of candles - may need multiple API calls 
-// TODO : re-factor this function
 async function loadHistoricalData(_id, s) {
   TIMELINE_VALUES.forEach(async (timeFrame, i) => {
     winston.info(`Loading historical data for ${s} with ${timeFrame} time frame`);
@@ -120,26 +118,20 @@ async function loadHistoricalData(_id, s) {
 
 // returns true if historical data is current
 async function isHistoricalDataCurrent(_id, s, timeFrame, i) {
-  // get from db last candle for timeframe and symbol
-  const projection = {};
-  projection[`pd.${timeFrame}`] = 1;
-  console.log(projection);
-  let candles = await CryptoPair.findById(_id, { projection });
-  //const mostRecentCandle = candles.slice(-1);
+  let { pd } = await CryptoPair.findById(_id, { 'pd': 1 });
+  const candles = pd[timeFrame];
 
-  console.log(`Last candle for ${s} ${timeFrame} is ${candles}`);
-  
-  // if no previous candles - return
-  if (!mostRecentCandle) {
-    winston.info(`No previous data for ${s} at ${timeFrame}`); 
-    return false;
-  }
+  if (!candles || candles.length === 0) return false;
+
+  const mostRecentCandle = candles.slice(-1);
+
+  console.log(`Last candle for ${s} ${timeFrame} is ${mostRecentCandle}`);
   
   // if timeframe is further in past than current timeFrame, load missing data
-  if ((mostRecentCandle.projection.pd[timeFrame].t  + TIMELINE_DIVISORS[i]) < Date.now()) {
+  if ((mostRecentCandle.t  + TIMELINE_DIVISORS[i]) < Date.now()) {
     winston.info(`Candles are lagging behind current timeframe, updating for ${s} for ${timeFrame}`);
 
-    const startTime = mostRecentCandle.projection.candle.t + TIMELINE_DIVISORS[i];
+    const startTime = mostRecentCandle.t + TIMELINE_DIVISORS[i];
     const candles = await getCandles(s, timeFrame, startTime, Date.now());
       
     const pusher = { $push: {} };
